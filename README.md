@@ -1,81 +1,113 @@
-# Diabetic Retinopathy Detection using Convolutional Neural Networks (CNN)
+# 🩺 Diabetic Retinopathy Detection using CNN
 
-## 1. Overview
+This project uses a **Convolutional Neural Network (CNN)** to detect **Diabetic Retinopathy** from retinal fundus images.  
+It was developed as part of my academic learning in **Deep Learning and Medical Image Processing** during my MCA (Data Science Specialization) at **Alliance University**.
 
-This project focuses on the automated detection of Diabetic Retinopathy (DR) from retinal fundus images using a Convolutional Neural Network (CNN). The goal is to classify images into five severity levels of DR (No DR, Mild, Moderate, Severe, Proliferative DR), providing a tool to assist ophthalmologists in early diagnosis and prevention of vision loss.
-
----
-
-## 2. Problem Statement
-
-Diabetic Retinopathy is a leading cause of blindness among working-aged adults. Early detection and treatment can prevent severe vision loss. However, manual diagnosis by screening retinal photographs is a time-consuming task that requires trained clinicians and is prone to human error. This project aims to develop a deep learning model to automate this process, making it faster, more accessible, and potentially more accurate.
+Diabetic Retinopathy is one of the leading causes of blindness. Early detection and treatment can significantly reduce vision loss.  
+This project aims to demonstrate how deep learning can assist in medical diagnosis.
 
 ---
 
-## 3. Dataset
-
-The model was trained on the **APTOS 2019 Blindness Detection** dataset, which is available on Kaggle.
-
-* **Source:** [Kaggle APTOS 2019 Blindness Detection](https://www.kaggle.com/c/aptos2019-blindness-detection)
-* **Content:** The dataset contains 3,662 high-resolution retinal images taken under various imaging conditions.
-* **Labels:** Each image is rated for the severity of diabetic retinopathy on a scale of 0 to 4.
+##  Project Overview
+-Model Type: Convolutional Neural Network (custom architecture)
+- Libraries: TensorFlow, Keras, NumPy, Pandas, Matplotlib, OpenCV
+- Dataset: [Diabetic Retinopathy Dataset (Kaggle)](https://www.kaggle.com/datasets/sachinkumar413/diabetic-retinopathy-dataset)
+- Goal: Classify retinal images into different severity stages of diabetic retinopathy.
 
 ---
 
-## 4. Methodology
+## 🗂 Folder Structure
+```
 
-The solution follows a standard deep learning pipeline for image classification.
+Diabetic\_Retinopathy/
+│
+├── Diabetic\_retinopathy.ipynb   # Main Jupyter Notebook
+├── requirements.txt             # Dependencies
+├── README.md                    # Documentation
+├── assets/                      # Images/screenshots (optional)
+└── .gitignore                   # Ignore unnecessary files
 
-#### a. Data Preprocessing & Augmentation
-* **Image Resizing:** Images were resized to a uniform dimension (e.g., 224x224 pixels) to be fed into the CNN.
-* **Normalization:** Pixel values were normalized to the range [0, 1] to aid in faster convergence.
-* **Data Augmentation:** To prevent overfitting and increase the diversity of the training set, various augmentation techniques were applied, including random rotations, horizontal/vertical flips, and brightness adjustments.
-
-#### b. Model Architecture
-A Convolutional Neural Network was designed for this classification task. The architecture consists of:
-* Multiple convolutional blocks (Conv2D + ReLU activation + Batch Normalization + MaxPooling2D) to extract hierarchical features from the images.
-* A `Flatten` layer to convert the 2D feature maps into a 1D vector.
-* `Dense` (fully connected) layers for high-level reasoning.
-* A `Dropout` layer to reduce overfitting.
-* A final `Dense` layer with a `Softmax` activation function to output the probability for each of the 5 classes.
+````
 
 ---
 
-## 5. Hypothetical Results
+## ⚙ Installation & Setup
 
-The model would be evaluated based on classification accuracy and Cohen's Kappa score, which is suitable for imbalanced multi-class problems.
+1. **Clone the Repository**
+   ```bash
+   git clone https://github.com/yourusername/diabetic-retinopathy-cnn.git
+   cd diabetic-retinopathy-cnn
+````
 
-* **Training Accuracy:** ~95%
-* **Validation Accuracy:** ~85-90%
-* **Key Metrics:** Precision, Recall, and F1-Score would also be calculated for each class to understand the model's performance in detail. A confusion matrix would be used to visualize misclassifications.
+2. **Install Dependencies**
 
-*(Note: These are representative results for this type of problem.)*
+   ```bash
+   pip install -r requirements.txt
+   ```
 
----
+3. **Download Dataset**
 
-## 6. How to Run (Hypothetical)
-
-1.  **Clone the repository:**
-    ```bash
-    git clone [https://github.com/](https://github.com/)[Your-Username]/diabetic-retinopathy-cnn.git
-    ```
-2.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-3.  **Download the dataset** from the Kaggle link above and place it in a `data/` directory.
-4.  **Run the training script:**
-    ```bash
-    python src/train.py
-    ```
+   * Dataset: [Kaggle Link](https://www.kaggle.com/datasets/sachinkumar413/diabetic-retinopathy-dataset)
+   * Place it in a folder named `data/` inside the project directory.
 
 ---
 
-## 7. Technologies Used
+## 🚀 How to Run
 
-* **Python 3.8+**
-* **TensorFlow / Keras**
-* **Pandas & NumPy**
-* **Scikit-learn**
-* **OpenCV**
-* **Matplotlib**
+1. **Open the Jupyter Notebook**
+
+   ```bash
+   jupyter notebook Diabetic_retinopathy.ipynb
+   ```
+2. Run all cells to:
+
+   * Preprocess and augment images
+   * Train the CNN model
+   * Evaluate the performance
+   * Test predictions on sample images
+
+---
+
+## 📊 Results (Example)
+
+> *You can update this section with your actual metrics once you rerun the model.*
+
+* Training Accuracy:85%
+* Validation Accuracy:82%
+* Successfully identifies multiple severity levels of diabetic retinopathy.
+
+
+## 💡 Learning Outcomes
+
+* Learned the complete process of building a deep learning model from dataset loading to evaluation
+* Understood image preprocessing techniques for medical datasets
+* Gained hands-on experience in CNN architecture building and tuning
+
+---
+
+## 🔮 Future Improvements
+
+* Experiment with transfer learning (EfficientNet, ResNet)
+* Deploy as a web application for real-time use
+* Add explainability features (Grad-CAM) to highlight affected regions
+
+---
+
+## 📝 Acknowledgments
+
+* Dataset from [Kaggle](https://www.kaggle.com/)
+* TensorFlow & Keras documentation
+* Alliance University MCA Faculty for guidance
+
+---
+
+Author: Adil Khan
+Course: MCA - Data Science Specialization
+Institution: Alliance University
+
+```
+
+---
+
+
+```

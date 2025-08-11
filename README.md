@@ -105,9 +105,3 @@ Author: Adil Khan
 Course: MCA - Data Science Specialization
 Institution: Alliance University
 
-```
-
----
-
-
-```

@@ -1,158 +1,3 @@
-# # import os
-# # import io
-# # import numpy as np
-# # from PIL import Image
-# # from fastapi import FastAPI, UploadFile, File, HTTPException
-# # import tensorflow as tf
-# # from src.config import MODELS_DIR, IMG_SIZE, CLASS_NAMES
-
-# # # 1. Initialize the FastAPI Application
-# # app = FastAPI(
-# #     title="RetinaGuard Diagnostic API",
-# #     description="An AI-powered API for Diabetic Retinopathy screening.",
-# #     version="1.0"
-# # )
-
-# # # 2. Load the Pre-Trained Model Globally
-# # # This ensures the heavy model is loaded into memory exactly ONCE when the server starts.
-# # print("Loading model into memory...")
-# # model_path = os.path.join(MODELS_DIR, "dr_model_best.keras")
-
-# # try:
-# #     model = tf.keras.models.load_model(model_path)
-# #     print("Model successfully loaded and ready for inference!")
-# # except Exception as e:
-# #     print(f"CRITICAL ERROR: Could not load the model from {model_path}. Details: {e}")
-# #     model = None
-
-# # # 3. Helper Function: Image Preprocessing
-# # def prepare_image(image_bytes):
-# #     """
-# #     Takes raw uploaded bytes, converts them to an image, resizes to our model's 
-# #     expected input size, and transforms it into a TensorFlow batch.
-# #     """
-# #     # Open the image from bytes and ensure it is RGB
-# #     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    
-# #     # Resize to exactly 224x224 (as defined in our config)
-# #     img = img.resize((IMG_SIZE[0], IMG_SIZE[1]))
-    
-# #     # Convert the image to a numpy array for the neural network
-# #     img_array = tf.keras.preprocessing.image.img_to_array(img)
-    
-# #     # The model expects a batch of images (e.g., [1, 224, 224, 3])
-# #     # We expand the dimensions to create a batch of 1
-# #     img_array = np.expand_dims(img_array, axis=0)
-    
-# #     return img_array
-
-# # # 4. The Core Prediction Endpoint
-# # @app.post("/predict")
-# # async def predict_diabetic_retinopathy(file: UploadFile = File(...)):
-# #     """
-# #     Accepts an uploaded retinal image, passes it through the EfficientNet model, 
-# #     and returns a JSON response containing the diagnosis.
-# #     """
-# #     if model is None:
-# #         raise HTTPException(status_code=500, detail="The Machine Learning model is not loaded.")
-    
-# #     if not file.content_type.startswith("image/"):
-# #         raise HTTPException(status_code=400, detail="Invalid file type. Please upload an image.")
-
-# #     try:
-# #         # Read the uploaded file into memory
-# #         image_bytes = await file.read()
-        
-# #         # Preprocess the image
-# #         processed_image = prepare_image(image_bytes)
-        
-# #         # Run the neural network inference
-# #         predictions = model.predict(processed_image)
-        
-# #         # Find the highest probability class
-# #         predicted_class_idx = np.argmax(predictions[0])
-# #         predicted_class_name = CLASS_NAMES[predicted_class_idx]
-        
-# #         # Calculate the confidence percentage
-# #         confidence = float(np.max(predictions[0])) * 100
-        
-# #         # Return the professional JSON response
-# #         return {
-# #             "status": "success",
-# #             "filename": file.filename,
-# #             "diagnosis": predicted_class_name,
-# #             "confidence": f"{confidence:.2f}%"
-# #         }
-        
-# #     except Exception as e:
-# #         raise HTTPException(status_code=500, detail=f"An error occurred during prediction: {str(e)}")
-
-
-
-# import os
-# import io
-# import base64
-# import numpy as np
-# from PIL import Image
-# from fastapi import FastAPI, UploadFile, File, HTTPException
-# import tensorflow as tf
-# from src.config import MODELS_DIR, IMG_SIZE, CLASS_NAMES
-# from src.explainability import get_gradcam_heatmap, overlay_heatmap
-
-# app = FastAPI(title="RetinaGuard Diagnostic API", version="1.0")
-
-# print("Loading model into memory...")
-# model_path = os.path.join(MODELS_DIR, "dr_model_best.keras")
-# try:
-#     model = tf.keras.models.load_model(model_path)
-#     print("Model successfully loaded!")
-# except Exception as e:
-#     print(f"CRITICAL ERROR: {e}")
-#     model = None
-
-# def prepare_image(image_bytes):
-#     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-#     img = img.resize((IMG_SIZE[0], IMG_SIZE[1]))
-#     img_array = tf.keras.preprocessing.image.img_to_array(img)
-#     return np.expand_dims(img_array, axis=0)
-
-# @app.post("/predict")
-# async def predict_diabetic_retinopathy(file: UploadFile = File(...)):
-#     if model is None:
-#         raise HTTPException(status_code=500, detail="Model not loaded.")
-    
-#     try:
-#         image_bytes = await file.read()
-#         processed_image = prepare_image(image_bytes)
-        
-#         # 1. Run standard prediction
-#         predictions = model.predict(processed_image)
-#         predicted_class_idx = np.argmax(predictions[0])
-#         diagnosis = CLASS_NAMES[predicted_class_idx]
-#         confidence = float(np.max(predictions[0])) * 100
-        
-#         # 2. Generate Explainable AI Heatmap
-#         heatmap = get_gradcam_heatmap(processed_image, model)
-#         overlaid_img_array = overlay_heatmap(image_bytes, heatmap)
-        
-#         # 3. Convert the generated image to a secure base64 string
-#         overlaid_img_pil = Image.fromarray(overlaid_img_array)
-#         buffered = io.BytesIO()
-#         overlaid_img_pil.save(buffered, format="JPEG")
-#         heatmap_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-        
-#         return {
-#             "status": "success",
-#             "diagnosis": diagnosis,
-#             "confidence": f"{confidence:.2f}%",
-#             "heatmap": heatmap_base64
-#         }
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
-
-
-
-
 import os
 import io
 import base64
@@ -165,14 +10,26 @@ from src.explainability import get_gradcam_heatmap, overlay_heatmap
 
 app = FastAPI(title="RetinaGuard Clinical API", version="2.0")
 
+# --- CUSTOM INTERCEPTOR TO FIX KERAS BUG ---
+class SafeDense(tf.keras.layers.Dense):
+    @classmethod
+    def from_config(cls, config):
+        # Surgically remove the bugged keyword if it exists
+        config.pop('quantization_config', None)
+        return super().from_config(config)
+
 print("Loading model into memory...")
-model_path = os.path.join(MODELS_DIR, "dr_model_best.keras")
+# model_path = os.path.join(MODELS_DIR, "dr_model_best.keras")
+model_path = os.path.join(MODELS_DIR, "dr_model_best.h5")
+
 try:
-    model = tf.keras.models.load_model(model_path)
+    # Inject our SafeDense class during the load process to patch the bug
+    model = tf.keras.models.load_model(model_path, custom_objects={'Dense': SafeDense})
     print("Model successfully loaded!")
 except Exception as e:
     print(f"CRITICAL ERROR: {e}")
     model = None
+# -------------------------------------------
 
 def prepare_image(image_bytes):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")

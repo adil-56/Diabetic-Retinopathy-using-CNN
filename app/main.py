@@ -19,7 +19,9 @@ class SafeDense(tf.keras.layers.Dense):
         return super().from_config(config)
 
 print("Loading model into memory...")
-model_path = os.path.join(MODELS_DIR, "dr_model_best.keras")
+# model_path = os.path.join(MODELS_DIR, "dr_model_best.keras")
+model_path = os.path.join(MODELS_DIR, "dr_model_best.h5")
+
 try:
     # Inject our SafeDense class during the load process to patch the bug
     model = tf.keras.models.load_model(model_path, custom_objects={'Dense': SafeDense})

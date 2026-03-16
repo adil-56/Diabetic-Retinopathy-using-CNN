@@ -6,30 +6,18 @@ from PIL import Image
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 import tensorflow as tf
 from src.config import MODELS_DIR, IMG_SIZE, CLASS_NAMES
-from src.explainability import get_gradcam_heatmap, overlay_heatmap
 
 app = FastAPI(title="RetinaGuard Clinical API", version="2.0")
 
-# --- CUSTOM INTERCEPTOR TO FIX KERAS BUG ---
-class SafeDense(tf.keras.layers.Dense):
-    @classmethod
-    def from_config(cls, config):
-        # Surgically remove the bugged keyword if it exists
-        config.pop('quantization_config', None)
-        return super().from_config(config)
-
 print("Loading model into memory...")
-# model_path = os.path.join(MODELS_DIR, "dr_model_best.keras")
+# Point to the newly converted .h5 file
 model_path = os.path.join(MODELS_DIR, "dr_model_best.h5")
-
 try:
-    # Inject our SafeDense class during the load process to patch the bug
-    model = tf.keras.models.load_model(model_path, custom_objects={'Dense': SafeDense})
+    model = tf.keras.models.load_model(model_path)
     print("Model successfully loaded!")
 except Exception as e:
     print(f"CRITICAL ERROR: {e}")
     model = None
-# -------------------------------------------
 
 def prepare_image(image_bytes):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
@@ -78,18 +66,14 @@ async def predict_diabetic_retinopathy(
         diagnosis = CLASS_NAMES[predicted_class_idx]
         confidence = float(np.max(predictions[0])) * 100
         
-        # 2. Generate Explainable AI Heatmap
-        heatmap = get_gradcam_heatmap(processed_image, model)
-        overlaid_img_array = overlay_heatmap(image_bytes, heatmap)
-        
-        # Convert the generated image to a secure base64 string
-        overlaid_img_pil = Image.fromarray(overlaid_img_array)
+        # 2. TEMPORARY MEMORY FIX: Disable Grad-CAM for Render Free Tier
+        # We skip the heavy calculus that causes the Out-of-Memory crash.
+        # Instead, we just convert the ORIGINAL image to base64 so the UI doesn't break.
         buffered = io.BytesIO()
-        overlaid_img_pil.save(buffered, format="JPEG")
+        Image.open(io.BytesIO(image_bytes)).convert("RGB").save(buffered, format="JPEG")
         heatmap_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
         
         # 3. Generate Clinical Triage
-        # Default to safe values if the patient didn't fill out the form
         triage_message = generate_clinical_triage(
             diagnosis, 
             confidence, 

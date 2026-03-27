@@ -1,92 +1,129 @@
 import os
 import io
-import base64
 import numpy as np
 from PIL import Image
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 import tensorflow as tf
-from src.config import MODELS_DIR, IMG_SIZE, CLASS_NAMES
+from tensorflow.keras.applications import EfficientNetB3
+from tensorflow.keras import layers, models
 
-app = FastAPI(title="RetinaGuard Clinical API", version="2.0")
+MODELS_DIR = "models"
+IMG_SIZE = (224, 224)
+CLASS_NAMES = ["Healthy", "Mild DR", "Moderate DR", "Severe DR", "Proliferative DR"]
 
-print("Loading model into memory...")
-# Point to the newly converted .h5 file
-model_path = os.path.join(MODELS_DIR, "dr_model_best.h5")
-try:
-    model = tf.keras.models.load_model(model_path)
-    print("Model successfully loaded!")
-except Exception as e:
-    print(f"CRITICAL ERROR: {e}")
-    model = None
+app = FastAPI(title="RetinaGuard API")
 
-def prepare_image(image_bytes):
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    img = img.resize((IMG_SIZE[0], IMG_SIZE[1]))
-    img_array = tf.keras.preprocessing.image.img_to_array(img)
-    return np.expand_dims(img_array, axis=0)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-def generate_clinical_triage(diagnosis, confidence, hba1c, years_diabetic):
-    """Generates actionable medical advice based on AI prediction and patient data."""
-    if confidence < 60.0:
-        return "WARNING: AI confidence is low. Image quality may be poor. Please retake the scan or proceed with a manual clinical evaluation."
+MODEL_PATH = os.path.join(MODELS_DIR, "dr_model_best.keras")
+model = None
+
+def build_architecture():
+    # 1. We rebuild your exact EfficientNetB3 architecture directly in memory.
+    # weights=None prevents the server from trying to download data from the internet.
+    base_model = EfficientNetB3(
+        input_shape=(224, 224, 3),
+        include_top=False,
+        weights=None 
+    )
     
-    advice = ""
-    if diagnosis == "Healthy":
-        advice = "No signs of diabetic retinopathy detected. Maintain routine annual eye exams."
-        if hba1c > 7.0:
-            advice += " However, your HbA1c is elevated. Strict glycemic control is advised to prevent future vascular damage."
-            
-    elif diagnosis in ["Mild DR", "Moderate DR"]:
-        advice = "Early-to-moderate vascular damage detected. Schedule a comprehensive exam with an ophthalmologist within 3 months."
-        if years_diabetic > 10:
-            advice += " Given your long history of diabetes, close monitoring is critical to prevent progression."
-            
-    elif diagnosis in ["Proliferate DR", "Severe DR"]:
-        advice = "URGENT: High risk of severe vision loss. Immediate referral to a retinal specialist for potential intervention (laser therapy/injections) is strongly recommended."
+    recreated_model = models.Sequential([
+        base_model,
+        layers.GlobalAveragePooling2D(),
+        layers.Dense(256, activation='relu'),
+        layers.BatchNormalization(),
+        layers.Dropout(0.5),
+        layers.Dense(5, activation='softmax')
+    ])
+    return recreated_model
+
+@app.on_event("startup")
+async def load_model():
+    global model
+    try:
+        print("1. Constructing clean model architecture in memory...")
+        model = build_architecture()
         
-    return advice
+        print(f"2. Pouring trained weights from {MODEL_PATH} into architecture...")
+        # 3. THE BYPASS: load_weights() extracts only the numbers and ignores the broken blueprint!
+        model.load_weights(MODEL_PATH)
+        
+        print("✅ Model weights loaded successfully into memory! Server is ALIVE.")
+    except Exception as e:
+        print(f"🚨 CRITICAL ERROR loading model: {e}")
+
+@app.get("/")
+async def health_check():
+    return {"status": "Online", "message": "RetinaGuard AI Backend is running perfectly!"}
 
 @app.post("/predict")
-async def predict_diabetic_retinopathy(
+async def predict_dr(
     file: UploadFile = File(...),
-    age: int = Form(None),
-    years_diabetic: int = Form(None),
-    hba1c: float = Form(None)
+    age: str = Form("45"),
+    years_diabetic: str = Form("5"),
+    hba1c: str = Form("6.5")
 ):
     if model is None:
-        raise HTTPException(status_code=500, detail="Model not loaded.")
-    
+        raise HTTPException(status_code=500, detail="Server Error: Model failed to load.")
+
     try:
         image_bytes = await file.read()
-        processed_image = prepare_image(image_bytes)
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        image = image.resize(IMG_SIZE)
         
-        # 1. Run standard prediction
-        predictions = model.predict(processed_image)
-        predicted_class_idx = np.argmax(predictions[0])
-        diagnosis = CLASS_NAMES[predicted_class_idx]
-        confidence = float(np.max(predictions[0])) * 100
+        img_array = np.array(image)
+        img_array = np.expand_dims(img_array, axis=0)
         
-        # 2. TEMPORARY MEMORY FIX: Disable Grad-CAM for Render Free Tier
-        # We skip the heavy calculus that causes the Out-of-Memory crash.
-        # Instead, we just convert the ORIGINAL image to base64 so the UI doesn't break.
-        buffered = io.BytesIO()
-        Image.open(io.BytesIO(image_bytes)).convert("RGB").save(buffered, format="JPEG")
-        heatmap_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        predictions = model.predict(img_array)
+        class_idx = np.argmax(predictions[0])
+        confidence = float(np.max(predictions[0]))
         
-        # 3. Generate Clinical Triage
-        triage_message = generate_clinical_triage(
-            diagnosis, 
-            confidence, 
-            hba1c if hba1c else 6.5, 
-            years_diabetic if years_diabetic else 5
-        )
+        diagnosis = CLASS_NAMES[class_idx]
         
+        triage_recommendation = f"Patient Profile (Age: {age}, HbA1c: {hba1c}%). "
+        if class_idx == 0:
+            triage_recommendation += "Routine annual retinal screening recommended."
+        elif class_idx in [1, 2]:
+            triage_recommendation += "Schedule follow-up with ophthalmologist within 3-6 months. Strict glycemic control advised."
+        else:
+            triage_recommendation += "URGENT referral to a retina specialist. Extremely high risk of severe vision complications."
+
+        # Add explainability import here so it doesn't crash if optional 
+        heatmap_base64 = None
+        try:
+            import sys
+            # ensure src is in path
+            parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if parent_dir not in sys.path:
+                sys.path.append(parent_dir)
+            from src.explainability import get_gradcam_heatmap, overlay_heatmap
+            import cv2
+            
+            heatmap = get_gradcam_heatmap(img_array, model)
+            superimposed_img = overlay_heatmap(image_bytes, heatmap, alpha=0.5)
+            
+            # Convert superimposed img to base64
+            # superimposed_img is RGB, convert to BGR for cv2 imencode
+            import base64
+            _, buffer = cv2.imencode('.jpg', cv2.cvtColor(superimposed_img, cv2.COLOR_RGB2BGR))
+            heatmap_base64 = base64.b64encode(buffer).decode("utf-8")
+        except Exception as expl_err:
+            print(f"Heatmap generation failed (non-fatal): {expl_err}")
+
         return {
-            "status": "success",
             "diagnosis": diagnosis,
-            "confidence": f"{confidence:.2f}%",
-            "triage_recommendation": triage_message,
-            "heatmap": heatmap_base64
+            "confidence": f"{confidence * 100:.2f}%",
+            "triage_recommendation": triage_recommendation,
+            "heatmap": heatmap_base64 
         }
+
     except Exception as e:
+        print(f"Prediction Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

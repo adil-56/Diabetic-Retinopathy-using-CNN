@@ -3,268 +3,416 @@ import requests
 from PIL import Image
 import io
 import base64
+import os
 from fpdf import FPDF
 
 # -------------------------------
-# PDF GENERATION FUNCTION
+# PAGE CONFIGURATION
 # -------------------------------
+st.set_page_config(
+    page_title="RetinaGuard Clinical AI",
+    page_icon="🩺",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# -------------------------------
+# PREMIUM UI CSS INJECTION
+# -------------------------------
+st.markdown("""
+    <style>
+    /* Global Typography Enhancement */
+    html, body, [class*="css"] {
+        font-family: 'Inter', 'Segoe UI', sans-serif;
+        font-size: 1.15rem; /* Increased for better readability */
+    }
+    
+    /* Elegant Metric Cards (Adaptive to Streamlit Theme) */
+    .metric-card {
+        background-color: var(--secondary-background-color);
+        border: 1px solid rgba(128, 128, 128, 0.2);
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        text-align: center;
+        transition: transform 0.2s ease-in-out;
+    }
+    .metric-card:hover {
+        transform: translateY(-2px);
+    }
+    .metric-value {
+        font-size: 2.2rem;
+        font-weight: 800;
+        color: #0ea5e9; /* Medical Blue that works on dark/light */
+        margin-bottom: 0.2rem;
+    }
+    .metric-label {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-color);
+        opacity: 0.8;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Elegant Content Cards */
+    .info-card {
+        background-color: var(--secondary-background-color);
+        border-left: 5px solid #0ea5e9;
+        padding: 1.5rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    
+    /* Button Styling */
+    div.stButton > button:first-child {
+        background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.6rem 1.5rem;
+        font-size: 1.15rem;
+        font-weight: 600;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        transition: all 0.3s ease;
+    }
+    div.stButton > button:first-child:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
+        color: #f0f9ff;
+    }
+    
+    /* Headers */
+    h1, h2, h3 {
+        color: #0284c7;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+    }
+    
+    /* Clean Top Padding */
+    .block-container {
+        padding-top: 2rem;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# -------------------------------
+# HELPER FUNCTIONS
+# -------------------------------
+def get_sample_image(sample_name):
+    """Loads bundled sample images directly from the local disk to ensure 100% availability."""
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    filename = 'healthy.png' if 'Healthy' in sample_name else 'mild_dr.png'
+    filepath = os.path.join(base_dir, 'sample_images', filename)
+    
+    try:
+        return Image.open(filepath)
+    except Exception as e:
+        st.error(f"Failed to load local sample image: {filepath}. Verify sample_images directory exists.")
+        return None
+
 def create_pdf(patient_age, years_diabetic, hba1c, diagnosis, confidence, triage):
     pdf = FPDF()
     pdf.add_page()
 
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt="RetinaGuard Clinical AI - Medical Report", ln=True, align='C')
-
+    # Header
+    pdf.set_fill_color(2, 132, 199)
+    pdf.rect(0, 0, 210, 30, 'F')
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Arial", 'B', 20)
+    pdf.cell(200, 20, txt="RetinaGuard Clinical AI - Official Report", align='C')
+    
+    # Patient Data
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Arial", 'B', 14)
+    pdf.ln(30)
+    pdf.cell(200, 10, txt="1. Patient Profile", ln=True)
     pdf.set_font("Arial", '', 12)
-    pdf.ln(10)
-    pdf.cell(200, 10, txt=f"Patient Age: {patient_age}", ln=True)
-    pdf.cell    (200, 10, txt=f"Years Diabetic: {years_diabetic}", ln=True)
-    pdf.cell(200, 10, txt=f"Latest HbA1c: {hba1c}%", ln=True)
+    pdf.cell(200, 8, txt=f"   - Age: {patient_age} years old", ln=True)
+    pdf.cell(200, 8, txt=f"   - Diabetes Duration: {years_diabetic} years", ln=True)
+    pdf.cell(200, 8, txt=f"   - Latest HbA1c: {hba1c}%", ln=True)
 
-    pdf.ln(10)
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(200, 10, txt=f"AI Diagnosis: {diagnosis} (Confidence: {confidence})", ln=True)
-
+    # Diagnosis
     pdf.ln(5)
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(200, 10, txt="2. AI Diagnostic Assessment", ln=True)
+    pdf.set_font("Arial", '', 12)
+    pdf.cell(200, 8, txt=f"   - Detected Stage: {diagnosis}", ln=True)
+    pdf.cell(200, 8, txt=f"   - Model Confidence: {confidence}", ln=True)
+
+    # Triage
+    pdf.ln(5)
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(200, 10, txt="3. Clinical Triage & Next Steps", ln=True)
     pdf.set_font("Arial", '', 11)
-    pdf.multi_cell(0, 10, txt=f"Clinical Triage & Next Steps:\n{triage}")
+    safe_triage = str(triage).replace("•", "-").replace("‘", "'").replace("’", "'").replace("”", '"').replace("“", '"')
+    pdf.multi_cell(0, 7, txt=f"   {safe_triage}")
 
-    pdf.ln(10)
-    pdf.set_font("Arial", 'I', 10)
-    pdf.cell(200, 10, txt="Disclaimer: This is an AI-generated report and not a certified medical diagnosis.", ln=True)
+    # Footer Disclaimer
+    pdf.ln(15)
+    pdf.set_font("Arial", 'I', 9)
+    pdf.set_text_color(150, 150, 150)
+    pdf.multi_cell(0, 5, txt="DISCLAIMER: This diagnostic report is generated by Artificial Intelligence (RetinaGuard). It is for informational and triage purposes only and MUST NOT replace professional clinical judgment by a certified ophthalmologist.")
 
-    return bytes(pdf.output())
-
-
-# -------------------------------
-# PAGE CONFIG
-# -------------------------------
-st.set_page_config(
-    page_title="RetinaGuard Clinical AI",
-    page_icon="👁️",
-    layout="wide"
-)
-
-st.title("👁️ RetinaGuard: Clinical Triage & AI Screening")
-st.markdown(
-    "An enterprise-grade **Diabetic Retinopathy detection system** combining deep learning with patient metadata."
-)
+    return pdf.output(dest='S').encode('latin-1')
 
 # -------------------------------
-# SIDEBAR (PATIENT FORM)
+# SIDEBAR NAVIGATION & INTAKE
 # -------------------------------
 with st.sidebar:
-
-    st.header("📋 Patient Intake Form")
-    st.write("Enter clinical metadata to generate a comprehensive triage report.")
-
-    patient_age = st.number_input(
-        "Patient Age",
-        min_value=1,
-        max_value=120,
-        value=45
-    )
-
-    years_diabetic = st.number_input(
-        "Years Diagnosed with Diabetes",
-        min_value=0,
-        max_value=80,
-        value=5
-    )
-
-    hba1c = st.number_input(
-        "Latest HbA1c Level (%)",
-        min_value=3.0,
-        max_value=20.0,
-        value=6.5,
-        step=0.1
-    )
-
+    # Reliable SVG Icon instead of hotlinked image
+    st.markdown("""
+    <div style="text-align: center; margin-bottom: 1rem;">
+        <svg fill="#0284c7" width="80px" height="80px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 4C7 4 2.73 7.11 1 11.5 2.73 15.89 7 19 12 19s9.27-3.11 11-7.5C21.27 7.11 17 4 12 4zm0 12.5c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+        </svg>
+    </div>
+    <h2 style='text-align: center; color: #0284c7; margin-top: 0;'>RetinaGuard AI</h2>
+    <p style='text-align: center; font-style: italic; opacity: 0.8;'>Automated Diabetic Retinopathy Screening</p>
+    """, unsafe_allow_html=True)
+    
     st.divider()
 
-    st.warning(
-        "⚠️ Disclaimer: This is a portfolio demonstration system, not a certified medical device."
-    )
+    st.header("📋 Patient Intake Form")
+    st.info("Additional patient history helps generate specialized triage recommendations.")
+    
+    patient_age = st.slider("Patient Age", 18, 100, 45, help="Select the patient's current age.")
+    years_diabetic = st.slider("Years Since Diabetes Diagnosis", 0, 50, 5, help="How long has the patient been managing their diabetes?")
+    hba1c = st.number_input("Latest HbA1c Level (%)", min_value=3.0, max_value=20.0, value=6.5, step=0.1, help="Used to determine glycemic control risk.")
+    
+    st.divider()
+    
+    # Highly visible disclaimer moved permanently outside expander
+    st.warning("""
+    **⚠️ MEDICAL DISCLAIMER**
+    
+    This platform is a **Technical Demo** built for portfolio and educational purposes only. 
+    It is **NOT** a certified medical device and is **NOT** a substitute for professional clinical diagnosis by an ophthalmologist.
+    """)
 
 # -------------------------------
-# TABS
+# HERO SECTION
 # -------------------------------
-tab1, tab2, tab3 = st.tabs(
-    ["🩺 Clinical Screening", "📖 Patient Education", "⚙️ System Architecture"]
-)
+st.markdown("<h1 style='text-align: center; font-size: 3rem;'>RetinaGuard Clinical AI Portal</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; font-size: 1.25rem; opacity: 0.9;'>Empowering healthcare professionals with Deep Learning & Medical Image Processing</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; margin-bottom: 2rem;'>Upload a retinal fundus image below to get an instant screening for <b>Diabetic Retinopathy</b>. The AI provides a severity diagnosis alongside detailed Grad-CAM visual explanations.</p>", unsafe_allow_html=True)
 
-# =====================================================
-# TAB 1 : CORE APPLICATION
-# =====================================================
-with tab1:
+# -------------------------------
+# MAIN MENU TABS
+# -------------------------------
+tab_screen, tab_about, tab_disease = st.tabs(["🩺 AI Screening Dashboard", "⚙️ System Architecture", "📖 About DR & Prevention"])
 
-    st.subheader("Upload Retinal Scan")
+# ==========================================
+# TAB 1: SCREENING DASHBOARD
+# ==========================================
+with tab_screen:
+    input_col, viz_col = st.columns([1, 1], gap="large")
 
-    uploaded_file = st.file_uploader(
-        "Select a high-resolution fundus image (JPEG/PNG)",
-        type=["jpg", "jpeg", "png"]
-    )
+    with input_col:
+        st.header("1. Input Imaging Data")
+        
+        # Sample or Upload Choice
+        img_source = st.radio("Choose Image Source:", ["Use a Sample Image", "Upload your own scan"], horizontal=True)
+        
+        final_image = None
+        file_name_to_send = "sample.jpg"
+        img_bytes_to_send = None
+        img_type_to_send = "image/jpeg"
 
-    if uploaded_file is not None:
+        if img_source == "Upload your own scan":
+            uploaded_file = st.file_uploader("Upload High-Res Fundus Image (JPEG/PNG)", type=["jpg", "jpeg", "png"])
+            if uploaded_file:
+                final_image = Image.open(uploaded_file)
+                img_bytes_to_send = uploaded_file.getvalue()
+                file_name_to_send = uploaded_file.name
+                img_type_to_send = uploaded_file.type
+                
+        else:
+            sample_choice = st.selectbox("Select a Clinical Sample", [
+                "Sample 1 - Healthy Retina", 
+                "Sample 2 - Signs of DR (Exudates)"
+            ])
+            st.info("These are bundled clinical samples so you can test the AI instantly without a dataset.")
+            
+            final_image = get_sample_image(sample_choice)
+            if final_image:
+                buffered = io.BytesIO()
+                final_image.save(buffered, format="JPEG")
+                img_bytes_to_send = buffered.getvalue()
 
-        image = Image.open(uploaded_file)
+        # Added Kaggle Origin reference
+        st.markdown(f"""
+        <div style="font-size: 0.95rem; opacity: 0.8; margin-bottom: 1rem;">
+            <b>Model Training Data:</b> Our EfficientNet model was trained completely on verified Kaggle clinical datasets.
+            <a href="https://www.kaggle.com/datasets/sovitrath/diabetic-retinopathy-224x224-2019-data" target="_blank" style="color: #0ea5e9;">View the Original Dataset Here</a>.
+        </div>
+        """, unsafe_allow_html=True)
 
-        st.image(image, caption="Uploaded Retinal Scan", use_container_width=True)
+        if final_image:
+            # Wrapped image in a visual container, width bounded explicitly to 450
+            st.markdown("<div style='padding: 1rem; border: 1px solid rgba(128,128,128,0.2); border-radius: 12px; display: flex; justify-content: center;'>", unsafe_allow_html=True)
+            st.image(final_image, caption="Current Retinal Scan Ready for AI Screening", width=450)
+            st.markdown("</div><br>", unsafe_allow_html=True)
+            
+            run_analysis = st.button("🚀 Run AI Neural Network Analysis", use_container_width=True)
 
-        if st.button("Generate Clinical Report", type="primary"):
-
-            with st.spinner("Processing image and analyzing patient data..."):
-
+    with viz_col:
+        st.header("2. Diagnostic Results")
+        
+        if final_image is None:
+            st.info("👈 Please select a sample image or upload your own scan on the left to begin the analysis.")
+        
+        elif final_image and 'run_analysis' in locals() and run_analysis:
+            with st.spinner("Analyzing scan through Convolutional Neural Network..."):
                 try:
-
                     files = {
-                        "file": (
-                            uploaded_file.name,
-                            uploaded_file.getvalue(),
-                            uploaded_file.type
-                        )
+                        "file": (file_name_to_send, img_bytes_to_send, img_type_to_send)
                     }
-
                     data = {
                         "age": str(patient_age),
                         "years_diabetic": str(years_diabetic),
                         "hba1c": str(hba1c)
                     }
-
+                    
+                    # ⚠️ POINTING TO LOCALHOST PORT 8001 TO BYPASS PREVIOUS CRASHED SERVER
                     response = requests.post(
-                        # "http://127.0.0.1:8000/predict",
-                        "https://diabetic-retinopathy-oqr6.onrender.com/predict",
-                        files=files,
+                        "http://127.0.0.1:8001/predict", 
+                        files=files, 
                         data=data
                     )
 
                     if response.status_code == 200:
+                        res_json = response.json()
+                        diagnosis = res_json.get("diagnosis", "Unknown")
+                        confidence = res_json.get("confidence", "0.00%")
+                        triage = res_json.get("triage_recommendation", "N/A")
+                        heatmap_base64 = res_json.get("heatmap")
 
-                        result = response.json()
-
-                        diagnosis = result["diagnosis"]
-                        confidence = result["confidence"]
-                        triage = result.get(
-                            "triage_recommendation",
-                            "No recommendation provided."
-                        )
-
-                        heatmap_base64 = result.get("heatmap")
-
-                        st.success("Analysis Complete!")
-
-                        # Metrics
-                        m1, m2, m3 = st.columns(3)
-
-                        m1.metric("Predicted Stage", diagnosis)
-                        m2.metric("AI Confidence", confidence)
-                        m3.metric("Patient HbA1c", f"{hba1c}%")
-
-                        st.info(f"**Clinical Triage & Next Steps:**\n\n{triage}")
-
+                        st.success("✅ Neural Network Inference Complete! Review the results below.")
+                        
+                        # BEAUTIFUL CUSTOM METRICS
+                        st.markdown(f"""
+                        <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
+                            <div class="metric-card" style="flex: 1;">
+                                <div class="metric-value">{diagnosis}</div>
+                                <div class="metric-label">Predicted Stage</div>
+                            </div>
+                            <div class="metric-card" style="flex: 1;">
+                                <div class="metric-value">{confidence}</div>
+                                <div class="metric-label">AI Confidence</div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Triage Box
+                        st.info(f"📋 **Clinical Next Steps based on Patient Profile:**\n\n{triage}")
+                        
                         st.divider()
-
-                        st.subheader("Visual Analysis (Explainable AI)")
-
-                        img_col1, img_col2 = st.columns(2)
-
-                        with img_col1:
-                            st.image(
-                                image,
-                                caption="Original Scan",
-                                use_container_width=True
-                            )
-
-                        with img_col2:
-
-                            if heatmap_base64:
-
-                                heatmap_bytes = base64.b64decode(heatmap_base64)
-                                heatmap_img = Image.open(io.BytesIO(heatmap_bytes))
-
-                                st.image(
-                                    heatmap_img,
-                                    caption="Grad-CAM Focus Heatmap",
-                                    use_container_width=True
-                                )
-
-                            else:
-                                st.warning("No heatmap returned from server.")
-
-                        # ---------------------------------
-                        # PDF DOWNLOAD
-                        # ---------------------------------
-                        pdf_bytes = create_pdf(
-                            patient_age,
-                            years_diabetic,
-                            hba1c,
-                            diagnosis,
-                            confidence,
-                            triage
-                        )
-
+                        
+                        # Heatmap
+                        st.markdown("### Explainable AI (Grad-CAM)")
+                        st.write("Visualizing the precise regions of the retina that strongly influenced the AI model's diagnosis.")
+                        
+                        if heatmap_base64:
+                            try:
+                                heat_bytes = base64.b64decode(heatmap_base64)
+                                heat_img = Image.open(io.BytesIO(heat_bytes))
+                                st.markdown("<div style='display: flex; justify-content: center;'>", unsafe_allow_html=True)
+                                st.image(heat_img, caption="Red/Yellow regions indicate high computational importance (e.g. vascular damage)", width=450)
+                                st.markdown("</div>", unsafe_allow_html=True)
+                            except Exception as decode_err:
+                                st.error(f"Failed to decode the heatmap gracefully: {decode_err}")
+                        else:
+                            st.warning("⚠️ Heatmap generated empty by backend. Ensure your backend has enough memory and OpenCV installed correctly.")
+                            
+                        # Download PDF
+                        pdf_data = create_pdf(patient_age, years_diabetic, hba1c, diagnosis, confidence, triage)
                         st.download_button(
-                            label="📄 Download Clinical PDF Report",
-                            data=pdf_bytes,
+                            label="📄 Download Official PDF Clinical Report",
+                            data=pdf_data,
                             file_name="RetinaGuard_Clinical_Report.pdf",
-                            mime="application/pdf"
+                            mime="application/pdf",
+                            use_container_width=True
                         )
-
                     else:
-                        st.error(f"Backend Error: {response.text}")
+                        st.error(f"Backend API Error: {response.text}")
 
-                except requests.exceptions.ConnectionError:
+                except Exception as e:
+                    st.error(f"Failed to connect to Local Backend. Please make sure you are running 'uvicorn app.main:app' in another terminal window! Error: {str(e)}")
 
-                    st.error(
-                        "🚨 Could not connect to the backend. Ensure FastAPI is running on port 8000."
-                    )
 
-# =====================================================
-# TAB 2 : PATIENT EDUCATION
-# =====================================================
-with tab2:
+# ==========================================
+# TAB 2: SYSTEM ARCHITECTURE
+# ==========================================
+with tab_about:
+    st.header("System Workflow and Architecture")
+    
+    st.markdown("""
+    **RetinaGuard** is engineered as a fully decoupled, cloud-deployed microservice ecosystem designed to assist clinicians efficiently and transparently.
+    """)
+    
+    col_a, col_b = st.columns(2, gap="large")
+    with col_a:
+        st.markdown("""
+        <div class="info-card">
+        <h3>1. Core Architecture</h3>
+        <ul>
+            <li><b>Frontend (Streamlit):</b> Provides a responsive, SaaS-grade medical dashboard accessible via any modern browser with extensive custom CSS optimization.</li>
+            <li><b>Backend (FastAPI):</b> Delivers a high-performance REST API capable of asynchronous deep learning image processing.</li>
+            <li><b>Containerization (Docker):</b> Isolates operational dependencies using container environments for seamless execution on Hugging Face Spaces.</li>
+        </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with col_b:
+        st.markdown("""
+        <div class="info-card">
+        <h3>2. Screening Workflow</h3>
+        <i>How does the system actually process a scan?</i><br><br>
+        <b>Step A:</b> Fundus image is uploaded and dynamically resized to 224x224 arrays.<br>
+        <b>Step B:</b> Extracted array passes through our Transfer Learned <b>EfficientNet</b> model.<br>
+        <b>Step C:</b> Grad-CAM extracts gradients from the final CNN layers to compute prediction heatmaps.<br>
+        <b>Step D:</b> Clinical Metadata (Age, HbA1c) is merged to generate comprehensive PDF triage recommendations.
+        </div>
+        """, unsafe_allow_html=True)
 
-    st.header("Understanding Diabetic Retinopathy")
 
-    st.write(
-        "Diabetic Retinopathy (DR) is a complication of diabetes that damages the blood vessels in the retina."
-    )
-
-    st.markdown(
-        """
-* **Healthy:** Normal blood vessels.
-
-* **Mild/Moderate:** Microaneurysms and minor blockages.
-
-* **Severe:** Extensive blocked vessels depriving the retina of blood supply.
-
-* **Proliferative:** New fragile blood vessels grow and may bleed, causing severe vision loss.
-"""
-    )
-
-    st.info(
-        "Maintaining healthy blood sugar levels, blood pressure, and cholesterol are the best ways to prevent DR."
-    )
-
-# =====================================================
-# TAB 3 : ARCHITECTURE
-# =====================================================
-with tab3:
-
-    st.header("Technical Architecture")
-
-    st.write(
-        "This system was engineered as a robust, decoupled microservice application."
-    )
-
-    st.markdown(
-        """
-* **Frontend:** Streamlit providing a dynamic multi-tab SaaS interface.
-
-* **Backend:** FastAPI for high-performance asynchronous REST API.
-
-* **Machine Learning:** EfficientNetB3 trained using Transfer Learning on medical retinal datasets.
-
-* **Explainable AI:** Grad-CAM (Gradient-weighted Class Activation Mapping) to visualize AI decision focus.
-"""
-    )
+# ==========================================
+# TAB 3: ABOUT DR & DEMOGRAPHICS
+# ==========================================
+with tab_disease:
+    st.header("Diabetic Retinopathy: A Global Crisis")
+    
+    st.markdown("""
+    <div class="info-card">
+    <h3>Project Purpose & Demographic Realities (Focus: India)</h3>
+    Diabetic Retinopathy (DR) remains a leading cause of preventable blindness in working-aged adults worldwide. 
+    However, the impact is exceptionally severe in <b>India</b>, which is often dubbed the <i>'Diabetes Capital of the World'</i>.<br><br>
+    <ul>
+        <li>Over <b>77 million</b> individuals suffer from diabetes in India alone.</li>
+        <li>There is a critical shortage of certified ophthalmologists in rural Indian territories, leading to undetected DR progressing to irreversible blindness.</li>
+        <li><b>The Purpose of this Project:</b> RetinaGuard aims to demonstrate how highly accurate deep-learning systems can be deployed as <i>first-line triage tools</i> in rural medical clinics where specialists are unavailable, dramatically accelerating the referral of severe cases.</li>
+    </ul>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    dcol1, dcol2 = st.columns(2, gap="large")
+    
+    with dcol1:
+        st.subheader("The Five Clinical Stages")
+        st.markdown("""
+        1. **Healthy / No DR:** No visible vascular abnormalities.
+        2. **Mild Non-Proliferative:** Small areas of balloon-like swelling in the retina's tiny blood vessels (microaneurysms).
+        3. **Moderate Non-Proliferative:** Blood vessels that nourish the retina become blocked or swollen.
+        4. **Severe Non-Proliferative:** Extensive blockage deprives the retina of adequate blood supply, triggering neurovascular signals for neovascularization.
+        5. **Proliferative DR:** Fragile new blood vessels grow and leak blood into the eye, causing severe vision loss and potential retinal detachment.
+        """)
+        
+    with dcol2:
+        st.subheader("Fundamental Prevention")
+        st.info("""
+        **1. Glycemic Control (HbA1c):** Maintaining strict, healthy blood sugar levels is the absolute best way to prevent original vascular damage and slow progression.  
+        **2. Annual Eye Exams:** Early detection via regular camera screening saves vision long before physical symptoms are felt by the patient.  
+        **3. Blood Pressure Management:** High blood pressure applies catastrophic stress to already weakened retinal vessels, accelerating hemorrhage.
+        """)

@@ -4,7 +4,13 @@ from PIL import Image
 import io
 import base64
 import os
+import sys
 from fpdf import FPDF
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.applications import EfficientNetB3
+from tensorflow.keras import layers, models
+import cv2
 
 # -------------------------------
 # PAGE CONFIGURATION
@@ -158,6 +164,32 @@ def create_pdf(patient_age, years_diabetic, hba1c, diagnosis, confidence, triage
     return pdf.output(dest='S').encode('latin-1')
 
 # -------------------------------
+# MODEL CACHING (MONOLITHIC INFERENCE)
+# -------------------------------
+CLASS_NAMES = ["Healthy", "Mild DR", "Moderate DR", "Severe DR", "Proliferative DR"]
+
+@st.cache_resource
+def get_dr_model():
+    base_model = EfficientNetB3(
+        input_shape=(224, 224, 3),
+        include_top=False,
+        weights=None 
+    )
+    recreated_model = models.Sequential([
+        base_model,
+        layers.GlobalAveragePooling2D(),
+        layers.Dense(256, activation='relu'),
+        layers.BatchNormalization(),
+        layers.Dropout(0.5),
+        layers.Dense(5, activation='softmax')
+    ])
+    
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    model_path = os.path.join(base_dir, "models", "dr_model_best.keras")
+    recreated_model.load_weights(model_path)
+    return recreated_model
+
+# -------------------------------
 # SIDEBAR NAVIGATION & INTAKE
 # -------------------------------
 with st.sidebar:
@@ -266,80 +298,94 @@ with tab_screen:
         elif final_image and 'run_analysis' in locals() and run_analysis:
             with st.spinner("Analyzing scan through Convolutional Neural Network..."):
                 try:
-                    files = {
-                        "file": (file_name_to_send, img_bytes_to_send, img_type_to_send)
-                    }
-                    data = {
-                        "age": str(patient_age),
-                        "years_diabetic": str(years_diabetic),
-                        "hba1c": str(hba1c)
-                    }
+                    # MONOLITHIC INFERENCE (NO BACKEND REQUIRED)
+                    model = get_dr_model()
                     
-                    # ⚠️ POINTING TO LOCALHOST PORT 8001 TO BYPASS PREVIOUS CRASHED SERVER
-                    response = requests.post(
-                        "http://127.0.0.1:8001/predict", 
-                        files=files, 
-                        data=data
-                    )
-
-                    if response.status_code == 200:
-                        res_json = response.json()
-                        diagnosis = res_json.get("diagnosis", "Unknown")
-                        confidence = res_json.get("confidence", "0.00%")
-                        triage = res_json.get("triage_recommendation", "N/A")
-                        heatmap_base64 = res_json.get("heatmap")
-
-                        st.success("✅ Neural Network Inference Complete! Review the results below.")
-                        
-                        # BEAUTIFUL CUSTOM METRICS
-                        st.markdown(f"""
-                        <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
-                            <div class="metric-card" style="flex: 1;">
-                                <div class="metric-value">{diagnosis}</div>
-                                <div class="metric-label">Predicted Stage</div>
-                            </div>
-                            <div class="metric-card" style="flex: 1;">
-                                <div class="metric-value">{confidence}</div>
-                                <div class="metric-label">AI Confidence</div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                        # Triage Box
-                        st.info(f"📋 **Clinical Next Steps based on Patient Profile:**\n\n{triage}")
-                        
-                        st.divider()
-                        
-                        # Heatmap
-                        st.markdown("### Explainable AI (Grad-CAM)")
-                        st.write("Visualizing the precise regions of the retina that strongly influenced the AI model's diagnosis.")
-                        
-                        if heatmap_base64:
-                            try:
-                                heat_bytes = base64.b64decode(heatmap_base64)
-                                heat_img = Image.open(io.BytesIO(heat_bytes))
-                                st.markdown("<div style='display: flex; justify-content: center;'>", unsafe_allow_html=True)
-                                st.image(heat_img, caption="Red/Yellow regions indicate high computational importance (e.g. vascular damage)", width=450)
-                                st.markdown("</div>", unsafe_allow_html=True)
-                            except Exception as decode_err:
-                                st.error(f"Failed to decode the heatmap gracefully: {decode_err}")
-                        else:
-                            st.warning("⚠️ Heatmap generated empty by backend. Ensure your backend has enough memory and OpenCV installed correctly.")
-                            
-                        # Download PDF
-                        pdf_data = create_pdf(patient_age, years_diabetic, hba1c, diagnosis, confidence, triage)
-                        st.download_button(
-                            label="📄 Download Official PDF Clinical Report",
-                            data=pdf_data,
-                            file_name="RetinaGuard_Clinical_Report.pdf",
-                            mime="application/pdf",
-                            use_container_width=True
-                        )
+                    # Preprocess Image
+                    pil_img = Image.open(io.BytesIO(img_bytes_to_send)).convert("RGB")
+                    img_resized = pil_img.resize((224, 224))
+                    img_array = np.array(img_resized)
+                    img_array_expanded = np.expand_dims(img_array, axis=0)
+                    
+                    # Predict
+                    predictions = model.predict(img_array_expanded)
+                    class_idx = np.argmax(predictions[0])
+                    conf_val = float(np.max(predictions[0]))
+                    diagnosis = CLASS_NAMES[class_idx]
+                    confidence = f"{conf_val * 100:.2f}%"
+                    
+                    # Triage Logic
+                    triage = f"Patient Profile (Age: {patient_age}, HbA1c: {hba1c}%). "
+                    if class_idx == 0:
+                        triage += "Routine annual retinal screening recommended."
+                    elif class_idx in [1, 2]:
+                        triage += "Schedule follow-up with ophthalmologist within 3-6 months. Strict glycemic control advised."
                     else:
-                        st.error(f"Backend API Error: {response.text}")
+                        triage += "URGENT referral to a retina specialist. Extremely high risk of severe vision complications."
+                        
+                    # Grad-CAM Heatmap Generation
+                    heatmap_base64 = None
+                    try:
+                        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                        if base_dir not in sys.path:
+                            sys.path.append(base_dir)
+                        from src.explainability import get_gradcam_heatmap, overlay_heatmap
+                        
+                        heatmap = get_gradcam_heatmap(img_array_expanded, model)
+                        superimposed_img = overlay_heatmap(img_bytes_to_send, heatmap, alpha=0.5)
+                        _, buffer = cv2.imencode('.jpg', cv2.cvtColor(superimposed_img, cv2.COLOR_RGB2BGR))
+                        heatmap_base64 = base64.b64encode(buffer).decode("utf-8")
+                    except Exception as expl_err:
+                        print(f"Heatmap error: {expl_err}")
 
+                    st.success("✅ Neural Network Inference Complete! Review the results below.")
+                        
+                    # BEAUTIFUL CUSTOM METRICS
+                    st.markdown(f"""
+                    <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
+                        <div class="metric-card" style="flex: 1;">
+                            <div class="metric-value">{diagnosis}</div>
+                            <div class="metric-label">Predicted Stage</div>
+                        </div>
+                        <div class="metric-card" style="flex: 1;">
+                            <div class="metric-value">{confidence}</div>
+                            <div class="metric-label">AI Confidence</div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Triage Box
+                    st.info(f"📋 **Clinical Next Steps based on Patient Profile:**\n\n{triage}")
+                    
+                    st.divider()
+                    
+                    # Heatmap
+                    st.markdown("### Explainable AI (Grad-CAM)")
+                    st.write("Visualizing the precise regions of the retina that strongly influenced the AI model's diagnosis.")
+                    
+                    if heatmap_base64:
+                        try:
+                            heat_bytes = base64.b64decode(heatmap_base64)
+                            heat_img = Image.open(io.BytesIO(heat_bytes))
+                            st.markdown("<div style='display: flex; justify-content: center;'>", unsafe_allow_html=True)
+                            st.image(heat_img, caption="Red/Yellow regions indicate high computational importance (e.g. vascular damage)", width=450)
+                            st.markdown("</div>", unsafe_allow_html=True)
+                        except Exception as decode_err:
+                            st.error(f"Failed to decode the heatmap gracefully: {decode_err}")
+                    else:
+                        st.warning("⚠️ Heatmap generated empty by backend. Ensure your backend has enough memory and OpenCV installed correctly.")
+                        
+                    # Download PDF
+                    pdf_data = create_pdf(patient_age, years_diabetic, hba1c, diagnosis, confidence, triage)
+                    st.download_button(
+                        label="📄 Download Official PDF Clinical Report",
+                        data=pdf_data,
+                        file_name="RetinaGuard_Clinical_Report.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
                 except Exception as e:
-                    st.error(f"Failed to connect to Local Backend. Please make sure you are running 'uvicorn app.main:app' in another terminal window! Error: {str(e)}")
+                    st.error(f"Prediction failed: {str(e)}")
 
 
 # ==========================================

@@ -1,5 +1,5 @@
-tensorflow==2.18.0
-keras==3.6.0
+tensorflow-cpu
+keras
 pandas
 numpy
 opencv-python-headless

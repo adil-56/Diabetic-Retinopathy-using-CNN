@@ -2,7 +2,7 @@ streamlit
 requests
 Pillow
 fpdf==1.7.2
-tensorflow==2.18.0
-keras==3.6.0
+tensorflow-cpu
+keras
 numpy
 opencv-python-headless
